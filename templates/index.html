@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Chord Trainer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <div class="app-container">
+
+            <div id="chordDisplay">Press "Generate Chord" to start!</div>
+
+            <div class="input-submit-group">
+                <form id="answerForm" onsubmit="checkAnswer(); return false;" class="input-form">
+                    <input type="text" id="userInput" placeholder="Enter notes (space-separated)" autocomplete="off" />
+                    <button type="submit" class="submit-btn">Submit</button>
+                </form>
+            </div>
+
+            <button onclick="generateChord()" id="generateButton">Generate Chord</button>
+
+            <select id="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="competition">Competition</option>
+            </select>
+
+            <p id="feedback"></p>
+
+            <div class="bottom-container">
+                <p id="timerDisplay">Timer: --s</p>
+                <p id="scoreDisplay">Score: 0 / 0</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timer;
+        let timeLeft = 15;
+        let correctNotes = [];
+        let correctCount = 0;
+        let totalCount = 0;
+
+        function noteToPitchClass(note) {
+            const pitchClasses = {
+                'C': 0, 'B#': 0, 'Dbb': 0,
+                'C#': 1, 'Db': 1,
+                'D': 2, 'C##': 2, 'Ebb': 2,
+                'D#': 3, 'Eb': 3, 'Fbb': 3,
+                'E': 4, 'Fb': 4, 'D##': 4,
+                'F': 5, 'E#': 5, 'Gbb': 5,
+                'F#': 6, 'Gb': 6, 'E##': 6,
+                'G': 7, 'F##': 7, 'Abb': 7,
+                'G#': 8, 'Ab': 8,
+                'A': 9, 'G##': 9, 'Bbb': 9,
+                'A#': 10, 'Bb': 10, 'Cbb': 10,
+                'B': 11, 'Cb': 11, 'A##': 11
+            };
+            return pitchClasses[note];
+        }
+
+        function arraysEqual(a, b) {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+                if (a[i] !== b[i]) return false;
+            }
+            return true;
+        }
+
+        function generateChord() {
+            const difficulty = document.getElementById('difficulty').value;
+
+            fetch(`/generate_chord?difficulty=${difficulty}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('chordDisplay').innerText = `Spell the notes in: ${data.root}${data.chord_type}`;
+                    correctNotes = data.correct_notes;
+                    startTimer(difficulty);
+                    document.getElementById('feedback').innerText = "";
+                    document.getElementById('userInput').value = "";
+                });
+        }
+
+        function startTimer(difficulty) {
+            clearInterval(timer);
+            timeLeft = difficulty === 'competition' ? 15 : 30;
+            const timerDisplay = document.getElementById('timerDisplay');
+
+            timer = setInterval(() => {
+                timerDisplay.innerText = `Timer: ${timeLeft}s`;
+                timeLeft--;
+
+                if (timeLeft < 0) {
+                    clearInterval(timer);
+                    timerDisplay.innerText = "Time's up!";
+                }
+            }, 1000);
+        }
+
+        function checkAnswer() {
+            const userAnswer = document.getElementById('userInput').value.trim().split(/\s+/);
+            const userPitchClasses = userAnswer.map(noteToPitchClass);
+            const correctPitchClasses = correctNotes.map(noteToPitchClass);
+
+            totalCount++;
+
+            if (arraysEqual(userPitchClasses, correctPitchClasses)) {
+                correctCount++;
+                document.getElementById('feedback').innerText = "✅ Correct!";
+                updateScore();
+
+                // Auto-generate next chord if correct
+                setTimeout(generateChord, 1000); // 1s delay for feedback moment
+            } else {
+                document.getElementById('feedback').innerText = `❌ Incorrect! Correct notes: ${correctNotes.join(' ')}`;
+                updateScore();
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('scoreDisplay').innerText = `Score: ${correctCount} / ${totalCount}`;
+        }
+    </script>
+</body>
+
+</html>
