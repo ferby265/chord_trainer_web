@@ -15,11 +15,12 @@
             <div id="chordDisplay">Press "Generate Chord" to start!</div>
 
             <div class="input-submit-group">
-                <form id="answerForm" onsubmit="checkAnswer(); return false;" class="input-form">
+                <form id="answerForm" class="input-form">
                     <input type="text" id="userInput" placeholder="Enter notes (space-separated)" autocomplete="off" />
                     <button type="submit" class="submit-btn">Submit</button>
                 </form>
             </div>
+
 
             <button onclick="generateChord()" id="generateButton">Generate Chord</button>
 
@@ -66,7 +67,7 @@
         let correctNotes = [];
         let correctCount = 0;
         let totalCount = 0;
-
+        let intervals = [];
         let totalTimeSpent = 0;
         let answerCount = 0;
         let startTime;
@@ -98,6 +99,35 @@
             return true;
         }
 
+        const intervalLabels = {
+            0: '1',
+            1: 'b2',
+            2: '2',
+            3: 'b3',
+            4: '3',
+            5: '4',
+            6: 'b5',
+            7: '5',
+            8: '#5',
+            9: '6',
+            10: 'b7',
+            11: '7',
+            12: '1',
+            13: 'b9',
+            14: '9',
+            15: '#9',
+            16: '3',
+            17: '11(4)',
+            18: '#11(b5)',
+            19: '5',
+            20: '#5/b13',
+            21: '13(6)',
+        };
+
+        function getIntervalLabels(intervals) {
+            return intervals.map(semitones => intervalLabels[semitones] || semitones).join(' ');
+        }
+
         function generateChord() {
             const difficulty = document.getElementById('difficulty').value;
 
@@ -113,12 +143,25 @@
                 .then(data => {
                     document.getElementById('chordDisplay').innerText = `Spell the notes in: ${data.root}${data.chord_type}`;
                     correctNotes = data.correct_notes;
+                    chord_type = data.chord_type;
+                    intervals = data.intervals; // ✅ Store intervals from backend
+
                     startTimer(difficulty);
                     document.getElementById('feedback').innerText = "";
                     document.getElementById('userInput').value = "";
 
-                    startTime = Date.now(); // Start timing
+                    startTime = Date.now();
+                })
+                .catch(error => {
+                    console.error("Error fetching chord:", error);
+                    document.getElementById('feedback').innerText = "❌ Failed to get a new chord. Check console.";
                 });
+        }
+
+
+
+        function getIntervalLabels(intervals) {
+            return intervals.map(semitones => intervalLabels[semitones] || semitones).join(' ');
         }
 
         function startTimer(difficulty) {
@@ -142,29 +185,48 @@
             const userPitchClasses = userAnswer.map(noteToPitchClass);
             const correctPitchClasses = correctNotes.map(noteToPitchClass);
 
-            clearInterval(timer); // Stop the timer when answering
+            clearInterval(timer);
 
             const endTime = Date.now();
-            const timeTaken = (endTime - startTime) / 1000; // in seconds
+            const timeTaken = (endTime - startTime) / 1000;
 
             totalTimeSpent += timeTaken;
             answerCount++;
-
             updateAverageTime();
-
             totalCount++;
 
             if (arraysEqual(userPitchClasses, correctPitchClasses)) {
                 correctCount++;
                 document.getElementById('feedback').innerText = "✅ Correct!";
                 updateScore();
-
                 setTimeout(generateChord, 1000);
             } else {
-                document.getElementById('feedback').innerText = `❌ Incorrect! Correct notes: ${correctNotes.join(' ')}`;
+                const intervalText = intervals.map(semitones => intervalLabels[semitones] || semitones);
+                const semitoneText = intervals.map(String);
+
+                const numNotes = correctNotes.length;
+                const noteRow = correctNotes.map(note => `<div class="chord-cell">${note}</div>`).join('');
+                const intervalRow = intervalText.map(interval => `<div class="chord-cell">${interval}</div>`).join('');
+                const semitoneRow = semitoneText.map(semitone => `<div class="chord-cell">${semitone}</div>`).join('');
+
+                document.getElementById('feedback').innerHTML = `
+            ❌ Incorrect!<br>
+            <div class="chord-grid">
+                <div class="chord-label">Correct Notes:</div>
+                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
+
+                <div class="chord-label">Intervals:</div>
+                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${intervalRow}</div>
+
+                <div class="chord-label">Semitones:</div>
+                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${semitoneRow}</div>
+            </div>
+        `;
                 updateScore();
             }
         }
+
+
 
         function updateScore() {
             document.getElementById('scoreDisplay').innerText = `Score: ${correctCount} / ${totalCount}`;
@@ -179,4 +241,10 @@
             const popup = document.getElementById('helpPopup');
             popup.classList.toggle('hidden');
         }
+
+        document.getElementById('answerForm').addEventListener('submit', function (e) {
+            e.preventDefault(); // Stop form from reloading page
+            checkAnswer();
+        });
+
     </script>

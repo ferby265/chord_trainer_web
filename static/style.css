@@ -128,3 +128,32 @@ input[type="text"]:focus {
 .help-button-fixed:hover {
     background-color: #333;
 }
+
+.chord-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    row-gap: 4px;
+    column-gap: 12px;
+    font-family: Menlo, Consolas, Monaco, monospace;
+    margin-top: 8px;
+}
+
+.chord-label {
+    font-weight: bold;
+    text-align: left;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.chord-row {
+    display: grid;
+    gap: 8px;
+    align-items: center;
+}
+
+.chord-cell {
+    text-align: center;
+    padding: 2px 4px;
+    min-width: 24px;
+    /* Optional - Just keeps single letters from looking too tight */
+}

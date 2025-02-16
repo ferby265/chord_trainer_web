@@ -54,7 +54,12 @@ def generate_chord():
     chord_type = random.choice(chord_pool)
     correct_notes = get_notes(root, chord_formulas[chord_type])
 
-    return jsonify({'root': root, 'chord_type': chord_type, 'correct_notes': correct_notes})
+    return jsonify({
+    'root': root,
+    'chord_type': chord_type,
+    'correct_notes': correct_notes,
+    'intervals': chord_formulas[chord_type]  # This is the key part
+})
 
 if __name__ == '__main__':
     app.run(debug=True)
