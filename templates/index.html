@@ -6,150 +6,148 @@
     <title>Chord Trainer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Additional styles for menu and app screens */
+    </style>
 </head>
 
 <body>
-    <div class="app-wrapper">
-        <div class="app-container">
+    <!-- Menu Screen (shown on load) -->
+    <div id="menuScreen" class="menu-screen">
+        <button onclick="selectMode('spell')">Spell Chord</button>
+        <button onclick="selectMode('name')">Name Chord</button>
+        <button disabled>Root/Interval (Coming Soon)</button>
+        <button disabled>Scales (Coming Soon)</button>
+        <button disabled>Harmony (Coming Soon)</button>
+    </div>
 
-            <div id="chordDisplay">Press "Generate Chord" to start!</div>
-
-            <div class="input-submit-group">
-                <form id="answerForm" class="input-form">
-                    <input type="text" id="userInput" placeholder="Enter notes (space-separated)" autocomplete="off" />
-                    <button type="submit" class="submit-btn">Submit</button>
-                </form>
-            </div>
-
-
-            <button onclick="generateChord()" id="generateButton">Generate Chord</button>
-
-            <select id="difficulty">
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-                <option value="competition">Competition</option>
-            </select>
-
-            <!-- This Help button is now positioned bottom right -->
-            <button type="button" class="help-button-fixed" onclick="toggleHelp()">Help</button>
-
-            <!-- Help Popup remains unchanged -->
-            <div id="helpPopup" class="help-popup hidden">
-                <p><strong>Easy:</strong> Triads, sus chords, basic 7ths.</p>
-                <p><strong>Medium:</strong> Adds 6ths, 9ths, 11ths, 13ths.</p>
-                <p><strong>Hard:</strong> Adds altered chords (#5, b9, minMaj7, etc.).</p>
-                <p><strong>Competition:</strong> Hard chords + 15s timer.</p>
-            </div>
-
-            <div id="helpPopup" class="help-popup hidden">
-                <p><strong>Easy:</strong> Triads, sus chords, basic 7ths.</p>
-                <p><strong>Medium:</strong> Adds 6ths, 9ths, 11ths, 13ths.</p>
-                <p><strong>Hard:</strong> Adds altered chords (#5, b9, minMaj7, etc.).</p>
-                <p><strong>Competition:</strong> Hard chords + 15s timer.</p>
-            </div>
-
-            <p id="feedback"></p>
-
-            <div class="bottom-container">
-                <div class="time-container">
-                    <p id="timerDisplay">Timer: --s</p>
-                    <p id="averageTimeDisplay">Average Time: --s</p>
+    <!-- App Screen (hidden on load) -->
+    <div id="appScreen" class="hidden">
+        <button onclick="goBackToMenu()" class="back-button">← Menu</button>
+        <div class="app-wrapper">
+            <div class="app-container">
+                <div id="chordDisplay">Press "Generate Chord" to start!</div>
+                <div class="input-submit-group">
+                    <form id="answerForm" class="input-form">
+                        <input type="text" id="userInput" placeholder="Enter notes (space-separated)"
+                            autocomplete="off" />
+                        <button type="submit" class="submit-btn">Submit</button>
+                    </form>
                 </div>
-                <p id="scoreDisplay">Score: 0 / 0</p>
+                <button onclick="generateChord()" id="generateButton">Generate Chord</button>
+                <select id="difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                    <option value="competition">Competition</option>
+                </select>
+                <button type="button" class="help-button-fixed" onclick="toggleHelp()">Help</button>
+                <div id="helpPopup" class="help-popup hidden">
+                    <p><strong>Easy:</strong> Basic triads, sus chords, basic 7ths, 6th chords, add chords.</p>
+                    <p><strong>Medium:</strong> Adds 9ths, 11ths, 13ths, suspended dominants.</p>
+                    <p><strong>Hard:</strong> Adds altered dominants, diminished, minMaj7, accidentals.</p>
+                    <p><strong>Competition:</strong> Same as Hard but with a 15s timer.</p>
+                    <p><strong>Shell Mode:</strong> Reduces chords to Root, 3rd, 7th, and essential extensions.</p>
+                </div>
+                <p id="feedback" class="feedback-container"></p>
+                <div class="bottom-container">
+                    <div class="time-container">
+                        <p id="timerDisplay">Timer: --s</p>
+                        <p id="averageTimeDisplay">Average Time: --s</p>
+                    </div>
+                    <div class="score-shell-wrapper">
+                        <p id="scoreDisplay">Score: 0 / 0</p>
+                        <div class="shell-toggle-wrapper" onclick="toggleShellMode()">
+                            <span id="shellCheckbox" class="shell-checkbox">☐</span>
+                            <span id="shellToggle" class="shell-icon">🐚 Shell Mode</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        // Global Variables
+        console.log("SCRIPT LOADED!");
         let timer;
         let timeLeft = 15;
         let correctNotes = [];
         let correctCount = 0;
+        let shellModeActive = false;
         let totalCount = 0;
         let intervals = [];
         let totalTimeSpent = 0;
         let answerCount = 0;
+        let currentMode = 'spell'; // Default mode
         let startTime;
         let currentDifficulty = 'easy';
+        let root;
+        let chordType;
 
+        // Helper: Note to pitch class conversion
         function noteToPitchClass(note) {
             const pitchClasses = {
-                'C': 0, 'B#': 0, 'Dbb': 0,
-                'C#': 1, 'Db': 1,
-                'D': 2, 'C##': 2, 'Ebb': 2,
-                'D#': 3, 'Eb': 3, 'Fbb': 3,
-                'E': 4, 'Fb': 4, 'D##': 4,
-                'F': 5, 'E#': 5, 'Gbb': 5,
-                'F#': 6, 'Gb': 6, 'E##': 6,
-                'G': 7, 'F##': 7, 'Abb': 7,
-                'G#': 8, 'Ab': 8,
-                'A': 9, 'G##': 9, 'Bbb': 9,
-                'A#': 10, 'Bb': 10, 'Cbb': 10,
-                'B': 11, 'Cb': 11, 'A##': 11
+                'C': 0, 'B#': 0, 'Dbb': 0, 'C#': 1, 'Db': 1, 'D': 2, 'C##': 2, 'Ebb': 2,
+                'D#': 3, 'Eb': 3, 'E': 4, 'Fb': 4, 'F': 5, 'E#': 5, 'F#': 6, 'Gb': 6,
+                'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11, 'Cb': 11
             };
             return pitchClasses[note];
         }
 
         function arraysEqual(a, b) {
-            if (a.length !== b.length) return false;
-            for (let i = 0; i < a.length; i++) {
-                if (a[i] !== b[i]) return false;
-            }
-            return true;
+            return a.length === b.length && a.every((v, i) => v === b[i]);
         }
 
+        // Menu switching functions
+        function selectMode(mode) {
+            currentMode = mode;
+            document.getElementById('menuScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+        }
+
+        function goBackToMenu() {
+            document.getElementById('menuScreen').classList.remove('hidden');
+            document.getElementById('appScreen').classList.add('hidden');
+        }
+
+        function toggleShellMode() {
+            shellModeActive = !shellModeActive;
+            document.getElementById('shellCheckbox').innerText = shellModeActive ? '☑️' : '☐';
+            document.getElementById('shellToggle').style.color = shellModeActive ? 'black' : '#aaa';
+        }
+
+        // Interval labels
         const intervalLabels = {
-            0: '1',
-            1: 'b2',
-            2: '2',
-            3: 'b3',
-            4: '3',
-            5: '4',
-            6: 'b5',
-            7: '5',
-            8: '#5',
-            9: '6',
-            10: 'b7',
-            11: '7',
-            12: '1',
-            13: 'b9',
-            14: '9',
-            15: '#9',
-            16: '3',
-            17: '11(4)',
-            18: '#11(b5)',
-            19: '5',
-            20: '#5/b13',
-            21: '13(6)',
+            0: '1', 1: 'b2', 2: '2', 3: 'b3', 4: '3', 5: '4', 6: 'b5', 7: '5', 8: '#5',
+            9: '6', 10: 'b7', 11: '7', 13: 'b9', 14: '9', 15: '#9', 17: '11', 18: '#11',
+            20: 'b13', 21: '13'
         };
 
-        function getIntervalLabels(intervals) {
-            return intervals.map(semitones => intervalLabels[semitones] || semitones).join(' ');
-        }
-
+        // Generate chord function (fetches chord from server)
         function generateChord() {
             const difficulty = document.getElementById('difficulty').value;
-
             if (difficulty !== currentDifficulty) {
                 totalTimeSpent = 0;
                 answerCount = 0;
                 updateAverageTime();
                 currentDifficulty = difficulty;
             }
-
-            fetch(`/generate_chord?difficulty=${difficulty}`)
+            fetch(`/generate_chord?difficulty=${difficulty}&shell_mode=${shellModeActive}`)
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('chordDisplay').innerText = `Spell the notes in: ${data.root}${data.chord_type}`;
+                    root = data.root;
+                    chordType = data.chord_type;
                     correctNotes = data.correct_notes;
-                    chord_type = data.chord_type;
-                    intervals = data.intervals; // ✅ Store intervals from backend
-
-                    startTimer(difficulty);
+                    intervals = data.intervals;
+                    if (currentMode === 'spell') {
+                        document.getElementById('chordDisplay').innerText = `Spell the notes in: ${root}${chordType}`;
+                    } else if (currentMode === 'name') {
+                        document.getElementById('chordDisplay').innerText = `Name this chord: ${correctNotes.join(' ')}`;
+                    }
                     document.getElementById('feedback').innerText = "";
                     document.getElementById('userInput').value = "";
-
+                    startTimer(difficulty);
                     startTime = Date.now();
                 })
                 .catch(error => {
@@ -158,93 +156,101 @@
                 });
         }
 
-
-
-        function getIntervalLabels(intervals) {
-            return intervals.map(semitones => intervalLabels[semitones] || semitones).join(' ');
-        }
-
         function startTimer(difficulty) {
             clearInterval(timer);
             timeLeft = difficulty === 'competition' ? 15 : 30;
-            const timerDisplay = document.getElementById('timerDisplay');
-
             timer = setInterval(() => {
-                timerDisplay.innerText = `Timer: ${timeLeft}s`;
+                document.getElementById('timerDisplay').innerText = `Timer: ${timeLeft}s`;
                 timeLeft--;
-
-                if (timeLeft < 0) {
-                    clearInterval(timer);
-                    timerDisplay.innerText = "Time's up!";
-                }
+                if (timeLeft < 0) clearInterval(timer);
             }, 1000);
         }
 
         function checkAnswer() {
-            const userAnswer = document.getElementById('userInput').value.trim().split(/\s+/);
-            const userPitchClasses = userAnswer.map(noteToPitchClass);
-            const correctPitchClasses = correctNotes.map(noteToPitchClass);
-
+            if (!correctNotes.length) {
+                document.getElementById('feedback').innerText = "❌ Generate a chord first!";
+                return;
+            }
+            const userAnswer = document.getElementById('userInput').value.trim();
             clearInterval(timer);
-
             const endTime = Date.now();
             const timeTaken = (endTime - startTime) / 1000;
-
             totalTimeSpent += timeTaken;
             answerCount++;
-            updateAverageTime();
             totalCount++;
+            if (currentMode === 'spell') {
+                const userPitchClasses = userAnswer.split(/\s+/).map(noteToPitchClass);
+                const correctPitchClasses = correctNotes.map(noteToPitchClass);
+                if (arraysEqual(userPitchClasses, correctPitchClasses)) {
+                    correctCount++;
+                    displayFeedback(true);
+                    setTimeout(generateChord, 1000);
+                } else {
+                    displayFeedback(false);
+                }
+            } else if (currentMode === 'name') {
+                if (userAnswer === `${root}${chordType}`) {
+                    correctCount++;
+                    displayFeedback(true);
+                    setTimeout(generateChord, 1000);
+                } else {
+                    displayFeedback(false, true);
+                }
+            }
+            updateScore();
+            updateAverageTime();
+        }
 
-            if (arraysEqual(userPitchClasses, correctPitchClasses)) {
-                correctCount++;
+        function displayFeedback(isCorrect, isNameMode = false) {
+            const numNotes = correctNotes.length;
+            const noteRow = correctNotes.map(note => `<div class="chord-cell">${note}</div>`).join('');
+            const intervalRow = intervals.map(interval => `<div class="chord-cell">${intervalLabels[interval] || interval}</div>`).join('');
+            const stepsRow = intervals.map((v, i) => (i === 0 ? '' : `+${v - intervals[i - 1]}`)).map(v => `<div class="chord-cell">${v}</div>`).join('');
+            const semitoneRow = intervals.map(v => `<div class="chord-cell">${v}</div>`).join('');
+            if (isCorrect) {
                 document.getElementById('feedback').innerText = "✅ Correct!";
-                updateScore();
-                setTimeout(generateChord, 1000);
             } else {
-                const intervalText = intervals.map(semitones => intervalLabels[semitones] || semitones);
-                const semitoneText = intervals.map(String);
-
-                const numNotes = correctNotes.length;
-                const noteRow = correctNotes.map(note => `<div class="chord-cell">${note}</div>`).join('');
-                const intervalRow = intervalText.map(interval => `<div class="chord-cell">${interval}</div>`).join('');
-                const semitoneRow = semitoneText.map(semitone => `<div class="chord-cell">${semitone}</div>`).join('');
-
                 document.getElementById('feedback').innerHTML = `
-            ❌ Incorrect!<br>
-            <div class="chord-grid">
-                <div class="chord-label">Correct Notes:</div>
-                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
-
-                <div class="chord-label">Intervals:</div>
-                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${intervalRow}</div>
-
-                <div class="chord-label">Semitones:</div>
-                <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${semitoneRow}</div>
-            </div>
+          ❌ Incorrect!<br>
+          ${isNameMode ? `<strong>Correct Chord:</strong> ${root}${chordType}<br><br>` : ''}
+          <div class="chord-grid">
+            <div class="chord-label">Correct Notes:</div>
+            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
+            <div class="chord-label">Intervals:</div>
+            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${intervalRow}</div>
+            <div class="chord-label">Formula:</div>
+            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${stepsRow}</div>
+            <div class="chord-label">Semitones (Root):</div>
+            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${semitoneRow}</div>
+          </div>
         `;
-                updateScore();
             }
         }
 
-
+        function updateAverageTime() {
+            const average = answerCount === 0 ? '--' : (totalTimeSpent / answerCount).toFixed(2);
+            document.getElementById('averageTimeDisplay').innerText = `Average Time: ${average}s`;
+        }
 
         function updateScore() {
             document.getElementById('scoreDisplay').innerText = `Score: ${correctCount} / ${totalCount}`;
         }
 
-        function updateAverageTime() {
-            const averageTime = answerCount === 0 ? '--' : (totalTimeSpent / answerCount).toFixed(2);
-            document.getElementById('averageTimeDisplay').innerText = `Average Time: ${averageTime}s`;
-        }
-
         function toggleHelp() {
-            const popup = document.getElementById('helpPopup');
-            popup.classList.toggle('hidden');
+            document.getElementById('helpPopup').classList.toggle('hidden');
         }
 
-        document.getElementById('answerForm').addEventListener('submit', function (e) {
-            e.preventDefault(); // Stop form from reloading page
-            checkAnswer();
+        // Initialize once the DOM is fully loaded
+        document.addEventListener("DOMContentLoaded", function () {
+            document.getElementById('menuScreen').classList.remove('hidden');
+            document.getElementById('appScreen').classList.add('hidden');
         });
 
+        document.getElementById('answerForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            checkAnswer();
+        });
     </script>
+</body>
+
+</html>

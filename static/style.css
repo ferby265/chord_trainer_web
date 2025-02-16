@@ -9,8 +9,10 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    height: 100vh;
-    justify-content: center;
+    height: auto;
+    min-height: 100vh;
+    justify-content: flex-start;
+    padding-top: 20px;
 }
 
 button,
@@ -58,22 +60,21 @@ input[type="text"]:focus {
     border: 3px solid #111;
     background-color: #fff;
     width: 90vw;
-    height: 90vw;
     max-width: 650px;
-    max-height: 650px;
     box-sizing: border-box;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     position: relative;
-    /* Needed for the fixed Help button */
+    padding: 20px;
+    min-height: 650px;
 }
 
 .app-container {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    width: 90%;
+    width: 100%;
+    flex-grow: 1;
 }
 
 .bottom-container {
@@ -82,24 +83,17 @@ input[type="text"]:focus {
     align-items: flex-start;
     margin-top: 8px;
     width: 100%;
-    /* Make sure it takes full width */
 }
 
 .time-container {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    /* Ensures flush left */
     gap: 2px;
-    /* Tight spacing between timer and average time */
 }
 
 .time-container p {
     margin: 0;
-}
-
-.hidden {
-    display: none;
 }
 
 .help-popup {
@@ -110,6 +104,8 @@ input[type="text"]:focus {
     width: 250px;
     font-size: 14px;
     z-index: 10;
+    top: 10px;
+    left: 10px;
 }
 
 .help-button-fixed {
@@ -155,5 +151,116 @@ input[type="text"]:focus {
     text-align: center;
     padding: 2px 4px;
     min-width: 24px;
-    /* Optional - Just keeps single letters from looking too tight */
+}
+
+.score-shell-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-top: 5px;
+}
+
+.shell-icon {
+    font-size: 18px;
+    color: #aaa;
+    transition: color 0.2s ease;
+    user-select: none;
+}
+
+.shell-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-top: 5px;
+    gap: 5px;
+}
+
+.shell-checkbox {
+    font-size: 18px;
+    user-select: none;
+}
+
+.feedback-container {
+    margin-top: 10px;
+    flex-grow: 1;
+}
+
+#feedback {
+    word-wrap: break-word;
+    overflow: visible;
+    white-space: normal;
+}
+
+.app-wrapper::after {
+    content: "";
+    flex-grow: 1;
+    min-height: 20px;
+}
+
+.back-button {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: #111;
+    color: white;
+    font-size: 16px;
+    padding: 6px 12px;
+    border: none;
+    cursor: pointer;
+}
+
+.back-button:hover {
+    background-color: #333;
+}
+
+/* Menu screen styles */
+.menu-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+.menu-screen button {
+    font-size: 20px;
+    padding: 12px 24px;
+    background-color: #111;
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.menu-screen button:hover {
+    background-color: #333;
+}
+
+.menu-screen button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+/* Both menu-screen and appScreen share these full-page styles */
+.menu-screen,
+#appScreen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: white;
+    display: flex;
+    /* Overridden by .hidden if .hidden is declared AFTER */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 2;
+}
+
+/* Keep .hidden at the bottom so it overrides display: flex above */
+.hidden {
+    display: none !important;
 }
