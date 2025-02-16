@@ -3,12 +3,12 @@ import random
 
 app = Flask(__name__)
 
-note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+note_names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
 
 easy_chords = [
     'Maj', 'min', 'dim', 'aug',
     'sus2', 'sus4',
-    'Maj7', 'min7', 'dom7',
+    'Maj7', 'min7', '7',
     '6', 'min6', '6/9',
     'add9', 'add4', 'add6'
 ]
@@ -58,7 +58,7 @@ chord_formulas = {
     # 7th Chords
     'Maj7': '1 3 5 7',
     'min7': '1 b3 5 b7',
-    'dom7': '1 3 5 b7',
+    '7': '1 3 5 b7',
 
     # Extended Chords
     '9': '1 3 5 b7 9',
@@ -186,7 +186,7 @@ def index():
     return render_template('index.html')
 
 valid_shell_chords = set([
-    'Maj7', 'min7', 'dom7', 'minMaj7', 'halfdim7', 'dim7', 'dim13',
+    'Maj7', 'min7', '7', 'minMaj7', 'halfdim7', 'dim7', 'dim13',
     '6', 'min6', '6/9', 'min6/9',
     '9', 'Maj9', 'min9',
     '11', 'Maj11', 'min11',
