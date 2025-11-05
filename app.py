@@ -8,14 +8,14 @@ note_names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
 easy_chords = [
     'Maj', 'min', 'dim', 'aug',
     'sus2', 'sus4',
-    'Maj7', 'min7', '7',
-    '6', 'min6', '6/9',
-    'add9', 'add4', 'add6'
+
 ]
 
 
-medium_chords = easy_chords + [
-    'min6/9',
+medium_chords = [
+    'min6/9', 'Maj7', 'min7', '7',
+    '6', 'min6', '6/9',
+    'add9', 'add4', 'add6',
     '9', 'Maj9', 'min9',
     '11', 'Maj11', 'min11',
     '13', 'Maj13', 'min13',
@@ -25,7 +25,7 @@ medium_chords = easy_chords + [
 ]
 
 
-hard_chords = medium_chords + [
+hard_chords = [
     'minMaj7', 'minMaj9',
     'halfdim7', 'dim7', 'dim13',
     '7b5', '7#5', '7b9', '7#9',
@@ -131,6 +131,7 @@ INTERVAL_MAP = {
     '11': 17, '#11': 18, 'b13': 20, '13': 21
 }
 
+
 def parse_intervals(interval_string):
     interval_map = {
         '1': 0,
@@ -151,10 +152,12 @@ def parse_intervals(interval_string):
             raise ValueError(f"Unknown interval: {step}")
     return intervals
 
+
 def formula_to_intervals(formula):
     symbols = formula.split()
     intervals = [INTERVAL_MAP[sym] for sym in symbols]
     return intervals
+
 
 def filter_shell_intervals(intervals):
     essential_degrees = {0, 3, 4, 10, 11}
@@ -181,9 +184,87 @@ def get_notes(root, intervals):
     root_index = note_names.index(root)
     return [note_names[(root_index + i) % 12] for i in intervals]
 
+# --- Accurate diatonic spelling for scales ---
+
+
+SEMITONE_MAP = {
+    'C': 0, 'B#': 0,
+    'C#': 1, 'Db': 1,
+    'D': 2,
+    'D#': 3, 'Eb': 3,
+    'E': 4, 'Fb': 4,
+    'E#': 5, 'F': 5,
+    'F#': 6, 'Gb': 6,
+    'G': 7,
+    'G#': 8, 'Ab': 8,
+    'A': 9,
+    'A#': 10, 'Bb': 10,
+    'B': 11, 'Cb': 11,
+}
+
+# pitch-class -> all enharmonics (shortest names first for a sane fallback)
+PC_TO_NAMES = {
+    pc: [n for n, v in SEMITONE_MAP.items() if v == pc and len(n) <= 2]
+    for pc in range(12)
+}
+
+NOTE_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+
+
+def _preferred_accidental_for_root(root: str) -> str:
+    """If root has flats, prefer flats; if sharps, prefer sharps; else neutral."""
+    if 'b' in root:
+        return 'flat'
+    if '#' in root:
+        return 'sharp'
+    return 'neutral'
+
+
+def _choose_enharmonic(pc: int, target_letter: str, preference: str) -> str:
+    """Pick the enharmonic that matches the target letter; else prefer flats/sharps; else first."""
+    candidates = PC_TO_NAMES[pc]
+    # 1) exact letter match (e.g., want 'C' vs 'B'/'C')
+    for n in candidates:
+        if n[0] == target_letter:
+            return n
+    # 2) prefer flats or sharps based on root
+    if preference == 'flat':
+        for n in candidates:
+            if 'b' in n:
+                return n
+    if preference == 'sharp':
+        for n in candidates:
+            if '#' in n:
+                return n
+    # 3) fallback
+    return candidates[0]
+
+
+def get_scale_notes(root: str, intervals: list[int]) -> list[str]:
+    """
+    Build a *scale* with correct diatonic letters (A→B→C→...).
+    Assumes intervals are ascending semitones from root (no octave 12 included).
+    """
+    root_pc = SEMITONE_MAP[root]
+    pref = _preferred_accidental_for_root(root)
+    # rotate letters so we start from root's letter
+    start_letter = root[0]
+    start_idx = NOTE_LETTERS.index(start_letter)
+    letter_cycle = NOTE_LETTERS[start_idx:] + NOTE_LETTERS[:start_idx]
+
+    notes = []
+    for i, semi in enumerate(intervals):
+        pc = (root_pc + semi) % 12
+        target_letter = letter_cycle[i % 7]
+        note_name = _choose_enharmonic(pc, target_letter, pref)
+        notes.append(note_name)
+    return notes
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 valid_shell_chords = set([
     'Maj7', 'min7', '7', 'minMaj7', 'halfdim7', 'dim7', 'dim13',
@@ -199,6 +280,7 @@ valid_shell_chords = set([
     'min7b5', 'min9b5', 'min7#5',
     'min7b13', 'min13b5'
 ])
+
 
 @app.route('/generate_chord', methods=['GET'])
 def generate_chord():
@@ -233,6 +315,83 @@ def generate_chord():
     })
 
 
+@app.route('/generate_scale', methods=['GET'])
+def generate_scale():
+    """
+    Generate a scale prompt according to the chosen difficulty *within* Scale mode.
+    Returns:
+        {
+          'root': 'D',
+          'scale_type': 'dorian',         # machine label
+          'correct_notes': [...],         # ordered from root up to 7th degree (no octave)
+          'intervals': [...]              # semitones from root
+        }
+    """
+    difficulty = request.args.get('difficulty', 'easy')
+
+    # Core interval blueprints (semitones from root, 0..11; 7-note scales omit the octave 12)
+    scale_intervals = {
+        # Basics
+        'major':           [0, 2, 4, 5, 7, 9, 11],  # Ionian
+        'natural_minor':   [0, 2, 3, 5, 7, 8, 10],  # Aeolian
+        'harmonic_minor':  [0, 2, 3, 5, 7, 8, 11],
+        'melodic_minor':   [0, 2, 3, 5, 7, 9, 11],  # ascending form
+
+        # Church modes (relative to major)
+        'ionian':          [0, 2, 4, 5, 7, 9, 11],
+        'dorian':          [0, 2, 3, 5, 7, 9, 10],
+        'phrygian':        [0, 1, 3, 5, 7, 8, 10],
+        'lydian':          [0, 2, 4, 6, 7, 9, 11],
+        'mixolydian':      [0, 2, 4, 5, 7, 9, 10],
+        'aeolian':         [0, 2, 3, 5, 7, 8, 10],
+        'locrian':         [0, 1, 3, 5, 6, 8, 10],
+
+        # Symmetric scales
+        'whole_tone':      [0, 2, 4, 6, 8, 10],           # 6-note
+        # H-W diminished (dominant)
+        'dim_half_whole':  [0, 1, 3, 4, 6, 7, 9, 10],
+        # W-H diminished (fully dim)
+        'dim_whole_half':  [0, 2, 3, 5, 6, 8, 9, 11],
+    }
+
+    # Allowed labels by difficulty (within Scale mode)
+    allowed_by_difficulty = {
+        'easy': [
+            'major', 'natural_minor'
+        ],
+        'medium': [
+            # keep basics + church modes
+            'ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian'
+        ],
+        'hard': [
+            # medium + advanced minor + symmetric
+            'harmonic_minor', 'melodic_minor',
+            'whole_tone', 'dim_half_whole', 'dim_whole_half'
+        ],
+        'competition': [
+            # same as hard
+            'major', 'natural_minor',
+            'ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian',
+            'harmonic_minor', 'melodic_minor',
+            'whole_tone', 'dim_half_whole', 'dim_whole_half'
+        ]
+    }
+
+    allowed = allowed_by_difficulty.get(
+        difficulty, allowed_by_difficulty['easy'])
+    scale_type = random.choice(allowed)
+    root = random.choice(note_names)
+
+    intervals = scale_intervals[scale_type]
+    notes = get_scale_notes(root, intervals)  # uses your new 12-name flat map
+
+    return jsonify({
+        'root': root,
+        'scale_type': scale_type,
+        'correct_notes': notes,
+        'intervals': intervals
+    })
+
+
 if __name__ == '__main__':
     app.run(debug=True)
-

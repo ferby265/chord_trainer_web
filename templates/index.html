@@ -16,8 +16,8 @@
     <div id="menuScreen" class="menu-screen">
         <button onclick="selectMode('spell')">Spell Chord</button>
         <button onclick="selectMode('name')">Name Chord</button>
+        <button onclick="selectMode('scale')">Scales</button>
         <button disabled>Root/Interval (Coming Soon)</button>
-        <button disabled>Scales (Coming Soon)</button>
         <button disabled>Harmony (Coming Soon)</button>
     </div>
 
@@ -34,7 +34,7 @@
                         <button type="submit" class="submit-btn">Submit</button>
                     </form>
                 </div>
-                <button onclick="generateChord()" id="generateButton">Generate Chord</button>
+                <button onclick="generateQuestion()" id="generateButton">Generate</button>
                 <select id="difficulty">
                     <option value="easy">Easy</option>
                     <option value="medium">Medium</option>
@@ -167,10 +167,43 @@
         }
 
         function checkAnswer() {
+            // --- SCALE MODE FIRST ---
+            if (currentMode === 'scale') {
+                if (!correctNotes.length) {
+                    document.getElementById('feedback').innerText = "❌ Generate a scale first!";
+                    return;
+                }
+
+                const userAnswer = document.getElementById('userInput').value.trim();
+                clearInterval(timer);
+                const endTime = Date.now();
+                const timeTaken = (endTime - startTime) / 1000;
+                totalTimeSpent += timeTaken;
+                answerCount++;
+                totalCount++;
+
+                const userPitchClasses = userAnswer.split(/\s+/).map(noteToPitchClass);
+                const correctPitchClasses = correctNotes.map(noteToPitchClass);
+
+                if (arraysEqual(userPitchClasses, correctPitchClasses)) {
+                    correctCount++;
+                    displayFeedback(true);
+                    setTimeout(generateQuestion, 1000);
+                } else {
+                    displayFeedback(false);
+                }
+
+                updateScore();
+                updateAverageTime();
+                return; // stop here so chord logic doesn’t also run
+            }
+
+            // --- CHORD MODES (SPELL / NAME) ---
             if (!correctNotes.length) {
                 document.getElementById('feedback').innerText = "❌ Generate a chord first!";
                 return;
             }
+
             const userAnswer = document.getElementById('userInput').value.trim();
             clearInterval(timer);
             const endTime = Date.now();
@@ -178,6 +211,7 @@
             totalTimeSpent += timeTaken;
             answerCount++;
             totalCount++;
+
             if (currentMode === 'spell') {
                 const userPitchClasses = userAnswer.split(/\s+/).map(noteToPitchClass);
                 const correctPitchClasses = correctNotes.map(noteToPitchClass);
@@ -197,35 +231,70 @@
                     displayFeedback(false, true);
                 }
             }
+
             updateScore();
             updateAverageTime();
         }
 
         function displayFeedback(isCorrect, isNameMode = false) {
             const numNotes = correctNotes.length;
-            const noteRow = correctNotes.map(note => `<div class="chord-cell">${note}</div>`).join('');
-            const intervalRow = intervals.map(interval => `<div class="chord-cell">${intervalLabels[interval] || interval}</div>`).join('');
-            const stepsRow = intervals.map((v, i) => (i === 0 ? '' : `+${v - intervals[i - 1]}`)).map(v => `<div class="chord-cell">${v}</div>`).join('');
+            const noteRow = correctNotes.map(n => `<div class="chord-cell">${n}</div>`).join('');
+
+            // --- build intervalRow (your new logic already here) ---
+            let intervalRow;
+            if (currentMode === 'scale') {
+                const has = new Set(intervals);
+                const pickLabel = (pc) => {
+                    switch (pc) {
+                        case 0: return '1'; case 1: return 'b2'; case 2: return '2';
+                        case 3: return 'b3'; case 4: return '3'; case 5: return '4';
+                        case 6: return has.has(7) ? '#4' : 'b5';
+                        case 7: return '5';
+                        case 8: return has.has(9) ? '#5' : 'b6';
+                        case 9: return '6'; case 10: return 'b7'; case 11: return '7';
+                        default: return pc;
+                    }
+                };
+                intervalRow = intervals.map(v => `<div class="chord-cell">${pickLabel(v)}</div>`).join('');
+            } else {
+                const chordLabels = {
+                    0: '1', 1: 'b2', 2: '2', 3: 'b3', 4: '3', 5: '4',
+                    6: '#4/b5', 7: '5', 8: '#5/b6', 9: '6', 10: 'b7', 11: '7',
+                    13: 'b9', 14: '9', 15: '#9', 17: '11', 18: '#11', 20: 'b13', 21: '13'
+                };
+                intervalRow = intervals
+                    .map(v => `<div class="chord-cell">${chordLabels[v] ?? v}</div>`)
+                    .join('');
+            }
+
+            // --- build stepsRow (this was missing) ---
+            const stepsRow = intervals
+                .map((v, i) => (i === 0 ? '' : `+${v - intervals[i - 1]}`))
+                .map(txt => `<div class="chord-cell">${txt}</div>`)
+                .join('');
+
             const semitoneRow = intervals.map(v => `<div class="chord-cell">${v}</div>`).join('');
+
             if (isCorrect) {
                 document.getElementById('feedback').innerText = "✅ Correct!";
             } else {
                 document.getElementById('feedback').innerHTML = `
-          ❌ Incorrect!<br>
-          ${isNameMode ? `<strong>Correct Chord:</strong> ${root}${chordType}<br><br>` : ''}
-          <div class="chord-grid">
-            <div class="chord-label">Correct Notes:</div>
-            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
-            <div class="chord-label">Intervals:</div>
-            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${intervalRow}</div>
-            <div class="chord-label">Formula:</div>
-            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${stepsRow}</div>
-            <div class="chord-label">Semitones (Root):</div>
-            <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${semitoneRow}</div>
-          </div>
-        `;
+      ❌ Incorrect!<br>
+      ${isNameMode ? `<strong>Correct Chord:</strong> ${root}${chordType}<br><br>` : ''}
+      <div class="chord-grid">
+        <div class="chord-label">Correct Notes:</div>
+        <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
+        <div class="chord-label">Intervals:</div>
+        <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${intervalRow}</div>
+        <div class="chord-label">Formula:</div>
+        <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${stepsRow}</div>
+        <div class="chord-label">Semitones (Root):</div>
+        <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${semitoneRow}</div>
+      </div>
+    `;
             }
         }
+
 
         function updateAverageTime() {
             const average = answerCount === 0 ? '--' : (totalTimeSpent / answerCount).toFixed(2);
@@ -250,6 +319,43 @@
             e.preventDefault();
             checkAnswer();
         });
+
+        function generateQuestion() {
+            const difficulty = document.getElementById('difficulty').value;
+
+            if (currentMode === 'scale') {
+                fetch(`/generate_scale?difficulty=${difficulty}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        root = data.root;
+                        const scaleType = data.scale_type; // e.g. "dorian", "whole_tone"
+                        correctNotes = data.correct_notes;
+                        intervals = data.intervals;
+
+                        const pretty = scaleType.replaceAll('_', ' ');
+                        document.getElementById('chordDisplay').innerText =
+                            `Spell the notes in: ${root} ${pretty} scale`;
+
+                        // Shell mode makes no sense for scales — dim it & reset if on
+                        if (shellModeActive) toggleShellMode();
+                        document.querySelector('.shell-toggle-wrapper').style.opacity = 0.35;
+
+                        document.getElementById('feedback').innerText = "";
+                        document.getElementById('userInput').value = "";
+                        startTimer(difficulty);
+                        startTime = Date.now();
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        document.getElementById('feedback').innerText = "❌ Failed to get a scale. Check console.";
+                    });
+                return;
+            }
+
+            // chord modes (“spell” / “name”)
+            document.querySelector('.shell-toggle-wrapper').style.opacity = 1;
+            generateChord(); // continues to respect difficulty & shell mode
+        }
     </script>
 </body>
 
