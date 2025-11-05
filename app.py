@@ -104,6 +104,7 @@ chord_formulas = {
     # Diminished Chords
     'dim7': '1 b3 b5 bb7',
     'dim13': '1 b3 b5 bb7 13',
+    'halfdim7': '1 b3 b5 b7',
 
     # Add Chords (Triads + Extensions)
     'add9': '1 3 5 9',
@@ -127,20 +128,19 @@ chord_formulas = {
 
 INTERVAL_MAP = {
     '1': 0, 'b2': 1, '2': 2, '#2': 3, 'b3': 3, '3': 4, '4': 5, '#4': 6, 'b5': 6, '5': 7,
-    '#5': 8, 'b6': 8, '6': 9, 'b7': 10, '7': 11, '9': 14, 'b9': 13, '#9': 15,
-    '11': 17, '#11': 18, 'b13': 20, '13': 21
+    '#5': 8, 'b6': 8, '6': 9, 'bb7': 9, 'b7': 10, '7': 11, '9': 14, 'b9': 13, '#9': 15,
+    '11': 17, '#11': 18, 'b13': 20, '13': 21, '#13': 22
 }
 
 
 def parse_intervals(interval_string):
     interval_map = {
-        '1': 0,
-        'b2': 1, '2': 2, '#2': 3, 'b3': 3, '3': 4,
+        '1': 0, 'b2': 1, '2': 2, '#2': 3, 'b3': 3, '3': 4,
         '4': 5, '#4': 6, 'b5': 6, '5': 7, '#5': 8, 'b6': 8,
-        '6': 9, '#6': 10, 'b7': 10, '7': 11,
+        '6': 9, 'bb7': 9, '#6': 10, 'b7': 10, '7': 11,
         'b9': 13, '9': 14, '#9': 15,
         '11': 17, '#11': 18,
-        'b13': 20, '13': 21
+        'b13': 20, '13': 21, '#13': 22
     }
 
     intervals = []
@@ -296,6 +296,7 @@ def generate_chord():
 
     root = random.choice(note_names)
     chord_type = random.choice(chord_pool)
+    app.logger.info(f"[generate_chord] {root}{chord_type}")
     intervals = parse_intervals(chord_formulas[chord_type])
 
     if shell_mode and chord_type not in valid_shell_chords:
@@ -392,6 +393,37 @@ def generate_scale():
         'intervals': intervals
     })
 
+
+@app.route('/self_test_hard')
+def self_test_hard():
+    import traceback
+    import random
+    fails = []
+    for _ in range(500):
+        chord_type = random.choice(hard_chords)
+        try:
+            intervals = parse_intervals(chord_formulas[chord_type])
+        except Exception as e:
+            fails.append({"chord_type": chord_type, "error": str(e)})
+    return jsonify({"fail_count": len(fails), "fails": fails[:10]})
+
+
+def validate_chords():
+    bad = []
+    for name, formula in chord_formulas.items():
+        try:
+            parse_intervals(formula)  # will raise if token unknown
+        except Exception as e:
+            bad.append((name, str(e)))
+    if bad:
+        print("\n[Chord Validator] Problems found:")
+        for n, msg in bad:
+            print(f"  - {n}: {msg}")
+    else:
+        print("\n[Chord Validator] All chord formulas parse OK.")
+
+
+validate_chords()
 
 if __name__ == '__main__':
     app.run(debug=True)
