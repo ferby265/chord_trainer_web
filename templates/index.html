@@ -17,8 +17,8 @@
         <button onclick="selectMode('spell')">Spell Chord</button>
         <button onclick="selectMode('name')">Name Chord</button>
         <button onclick="selectMode('scale')">Scales</button>
-        <button disabled>Root/Interval (Coming Soon)</button>
-        <button disabled>Harmony (Coming Soon)</button>
+        <button onclick="selectMode('degrees')">Degrees</button>
+        <button onclick="selectMode('harmony')">Harmony</button>
     </div>
 
     <!-- App Screen (hidden on load) -->
@@ -57,7 +57,7 @@
                     </div>
                     <div class="score-shell-wrapper">
                         <p id="scoreDisplay">Score: 0 / 0</p>
-                        <div class="shell-toggle-wrapper" onclick="toggleShellMode()">
+                        <div class="shell-toggle-wrapper" onclick="toggleModeToggle()">
                             <span id="shellCheckbox" class="shell-checkbox">☐</span>
                             <span id="shellToggle" class="shell-icon">🐚 Shell Mode</span>
                         </div>
@@ -84,6 +84,14 @@
         let currentDifficulty = 'easy';
         let root;
         let chordType;
+        // Degrees/Harmony modes
+        let harmonyTargetDegree = null;   // e.g. "b2"
+        let harmonyCorrectNote = null;    // e.g. "Eb"
+        let harmonyDegreeRoman = null;    // e.g. "II"
+        let harmonyChordName = null;      // e.g. "Bm7"
+        let harmonyChordQuality = null;   // e.g. "min7"
+        let harmonyChordRoot = null;      // e.g. "B"
+        let outOfScaleAllowed = false;
 
         // Helper: Note to pitch class conversion
         function noteToPitchClass(note) {
@@ -102,6 +110,8 @@
         // Menu switching functions
         function selectMode(mode) {
             currentMode = mode;
+            resetStats();
+            updateToggleUI();
             document.getElementById('menuScreen').classList.add('hidden');
             document.getElementById('appScreen').classList.remove('hidden');
         }
@@ -167,6 +177,75 @@
         }
 
         function checkAnswer() {
+            // --- DEGREES MODE (degree -> note) ---
+            if (currentMode === 'degrees') {
+                if (!harmonyCorrectNote) {
+                    document.getElementById('feedback').innerText = "❌ Generate a degrees question first!";
+                    return;
+                }
+
+                const userAnswer = document.getElementById('userInput').value.trim();
+                clearInterval(timer);
+
+                const endTime = Date.now();
+                const timeTaken = (endTime - startTime) / 1000;
+                totalTimeSpent += timeTaken;
+                answerCount++;
+                totalCount++;
+
+                const userPC = noteToPitchClass(userAnswer);
+                const correctPC = noteToPitchClass(harmonyCorrectNote);
+
+                if (userPC === correctPC) {
+                    correctCount++;
+                    document.getElementById('feedback').innerText = "✅ Correct!";
+                    updateScore();
+                    updateAverageTime();
+                    setTimeout(generateQuestion, 800);
+                    return;
+                }
+
+                document.getElementById('feedback').innerHTML = `❌ Incorrect!<br><strong>Correct:</strong> ${harmonyCorrectNote}`;
+                updateScore();
+                updateAverageTime();
+                return;
+            }
+
+            // --- HARMONY MODE (degree -> chord) ---
+            if (currentMode === 'harmony') {
+                if (!harmonyChordQuality || !harmonyChordName) {
+                    document.getElementById('feedback').innerText = "❌ Generate a harmony question first!";
+                    return;
+                }
+
+                const userAnswer = document.getElementById('userInput').value.trim();
+                clearInterval(timer);
+
+                const endTime = Date.now();
+                const timeTaken = (endTime - startTime) / 1000;
+                totalTimeSpent += timeTaken;
+                answerCount++;
+                totalCount++;
+
+                const parsed = parseChordAnswer(userAnswer);
+                const expectedRootPC = noteToPitchClass(harmonyChordRoot);
+
+                if (parsed && parsed.rootPC === expectedRootPC && parsed.qualityKey === harmonyChordQuality) {
+                    correctCount++;
+                    document.getElementById('feedback').innerText = "✅ Correct!";
+                    updateScore();
+                    updateAverageTime();
+                    setTimeout(generateQuestion, 800);
+                    return;
+                }
+
+                document.getElementById('feedback').innerHTML = `❌ Incorrect!<br><strong>Correct chord:</strong> ${harmonyChordName}`;
+                updateScore();
+                updateAverageTime();
+                return;
+            }
+
+
             // --- SCALE MODE FIRST ---
             if (currentMode === 'scale') {
                 if (!correctNotes.length) {
@@ -313,15 +392,187 @@
         document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('menuScreen').classList.remove('hidden');
             document.getElementById('appScreen').classList.add('hidden');
+            updateToggleUI();
+
+            const form = document.getElementById('answerForm');
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    checkAnswer();
+                });
+            }
         });
 
-        document.getElementById('answerForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            checkAnswer();
-        });
+        function resetStats() {
+            clearInterval(timer);
+            correctNotes = [];
+            intervals = [];
+            harmonyTargetDegree = null;
+            harmonyCorrectNote = null;
+            harmonyDegreeRoman = null;
+            harmonyChordName = null;
+            harmonyChordQuality = null;
+            harmonyChordRoot = null;
+
+            correctCount = 0;
+            totalCount = 0;
+            totalTimeSpent = 0;
+            answerCount = 0;
+
+            updateScore();
+            updateAverageTime();
+
+            document.getElementById('feedback').innerText = "";
+            document.getElementById('userInput').value = "";
+            document.getElementById('timerDisplay').innerText = "Timer: --s";
+        }
+
+        function toggleModeToggle() {
+            if (currentMode === 'degrees') {
+                outOfScaleAllowed = !outOfScaleAllowed;
+            } else {
+                shellModeActive = !shellModeActive;
+            }
+            updateToggleUI();
+        }
+
+        function updateToggleUI() {
+            const wrapper = document.querySelector('.shell-toggle-wrapper');
+            const checkbox = document.getElementById('shellCheckbox');
+            const label = document.getElementById('shellToggle');
+
+            // Hide in Scales and Harmony (for now)
+            if (currentMode === 'scale' || currentMode === 'harmony') {
+                wrapper.style.display = 'none';
+                return;
+            }
+
+            wrapper.style.display = 'flex';
+
+            if (currentMode === 'degrees') {
+                checkbox.innerText = outOfScaleAllowed ? '☑️' : '☐';
+                label.innerText = 'Out-of-scale';
+                label.style.color = outOfScaleAllowed ? 'black' : '#aaa';
+            } else {
+                checkbox.innerText = shellModeActive ? '☑️' : '☐';
+                label.innerText = '🐚 Shell Mode';
+                label.style.color = shellModeActive ? 'black' : '#aaa';
+            }
+        }
+
+        function parseChordAnswer(raw) {
+            const s = (raw || "").trim();
+            const m = s.match(/^([A-Ga-g])([#b]{0,2})(.*)$/);
+            if (!m) return null;
+
+            const letter = m[1].toUpperCase();
+            const acc = m[2] || "";
+            const restRaw = (m[3] || "").trim();
+
+            const rootNote = letter + acc;
+            const rootPC = noteToPitchClass(rootNote);
+
+            const rest = restRaw.replaceAll(" ", "");
+            const restLower = rest.toLowerCase();
+
+            let qualityKey = null;
+
+            if (restLower.includes("m7b5") || restLower.includes("min7b5") || rest.includes("ø7") || restLower.includes("halfdim")) {
+                qualityKey = "halfdim7";
+            } else if (restLower.includes("dim7") || rest.includes("°7") || restLower.includes("o7") || restLower === "dim") {
+                qualityKey = "dim7";
+            } else if (restLower.includes("minmaj7") || restLower.includes("mmaj7") || restLower.includes("m(maj7)")) {
+                qualityKey = "minMaj7";
+            } else if (restLower === "7" || restLower.includes("dom7")) {
+                qualityKey = "7";
+            } else if (restLower.includes("maj7") || restLower.includes("ma7") || restRaw.includes("M7") || rest.includes("Δ7")) {
+                qualityKey = "Maj7";
+            } else if (restLower.includes("min7") || (restLower.includes("m7") && !restLower.includes("maj7")) || restLower.includes("-7")) {
+                qualityKey = "min7";
+            } else if (restLower === "" || restLower === "maj") {
+                qualityKey = "Maj";
+            } else if (restLower === "min" || restLower === "m") {
+                qualityKey = "min";
+            }
+
+            return { rootPC, qualityKey };
+        }
+
+
+        function generateDegrees() {
+            const difficulty = document.getElementById('difficulty').value;
+
+            fetch(`/generate_degrees?difficulty=${difficulty}&out_of_scale=${outOfScaleAllowed}`)
+                .then(response => response.json())
+                .then(data => {
+                    root = data.root;
+                    const scaleType = data.scale_type;
+                    const pretty = scaleType.replaceAll('_', ' ');
+
+                    harmonyTargetDegree = data.target_degree;
+                    harmonyCorrectNote = data.correct_note;
+
+                    correctNotes = data.scale_notes || [];
+                    intervals = data.scale_intervals || [];
+
+                    document.getElementById('chordDisplay').innerText =
+                        `In ${root} ${pretty}, what is the ${harmonyTargetDegree}?`;
+
+                    document.getElementById('feedback').innerText = "";
+                    document.getElementById('userInput').value = "";
+                    startTimer(difficulty);
+                    startTime = Date.now();
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('feedback').innerText = "❌ Failed to get a degrees question.";
+                });
+        }
+
+        function generateHarmonyChord() {
+            const difficulty = document.getElementById('difficulty').value;
+
+            fetch(`/generate_harmony?difficulty=${difficulty}`)
+                .then(response => response.json())
+                .then(data => {
+                    root = data.root;
+                    const scaleType = data.scale_type;
+                    const pretty = scaleType.replaceAll('_', ' ');
+
+                    harmonyDegreeRoman = data.degree;
+                    harmonyChordName = data.chord_name;
+                    harmonyChordQuality = data.chord_quality;
+                    harmonyChordRoot = data.chord_root;
+
+                    correctNotes = data.scale_notes || [];
+                    intervals = data.scale_intervals || [];
+
+                    document.getElementById('chordDisplay').innerText =
+                        `In ${root} ${pretty}, what is the ${harmonyDegreeRoman} chord?`;
+
+                    document.getElementById('feedback').innerText = "";
+                    document.getElementById('userInput').value = "";
+                    startTimer(difficulty);
+                    startTime = Date.now();
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('feedback').innerText = "❌ Failed to get a harmony question.";
+                });
+        }
 
         function generateQuestion() {
             const difficulty = document.getElementById('difficulty').value;
+            updateToggleUI();
+
+            if (currentMode === 'degrees') {
+                generateDegrees();
+                return;
+            }
+            if (currentMode === 'harmony') {
+                generateHarmonyChord();
+                return;
+            }
 
             if (currentMode === 'scale') {
                 fetch(`/generate_scale?difficulty=${difficulty}`)
@@ -336,9 +587,6 @@
                         document.getElementById('chordDisplay').innerText =
                             `Spell the notes in: ${root} ${pretty} scale`;
 
-                        // Shell mode makes no sense for scales — dim it & reset if on
-                        if (shellModeActive) toggleShellMode();
-                        document.querySelector('.shell-toggle-wrapper').style.opacity = 0.35;
 
                         document.getElementById('feedback').innerText = "";
                         document.getElementById('userInput').value = "";
@@ -353,7 +601,6 @@
             }
 
             // chord modes (“spell” / “name”)
-            document.querySelector('.shell-toggle-wrapper').style.opacity = 1;
             generateChord(); // continues to respect difficulty & shell mode
         }
     </script>

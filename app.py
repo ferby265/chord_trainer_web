@@ -393,6 +393,209 @@ def generate_scale():
         'intervals': intervals
     })
 
+# -----------------------------
+# Degrees (scale-degree -> note) and Harmony (scale-degree -> chord) modes
+# -----------------------------
+
+# Simple chromatic spellings (used only when a requested degree is outside the scale)
+_SHARP_PC_TO_NOTE = {
+    0:'C', 1:'C#', 2:'D', 3:'D#', 4:'E', 5:'F', 6:'F#', 7:'G', 8:'G#', 9:'A', 10:'A#', 11:'B'
+}
+_FLAT_PC_TO_NOTE = {
+    0:'C', 1:'Db', 2:'D', 3:'Eb', 4:'E', 5:'F', 6:'Gb', 7:'G', 8:'Ab', 9:'A', 10:'Bb', 11:'B'
+}
+
+# Degree label -> semitone from root (within an octave)
+_DEGREE_TO_SEMI = {
+    '1': 0, 'b2': 1, '2': 2, 'b3': 3, '3': 4, '4': 5, '#4': 6, '5': 7,
+    'b6': 8, '6': 9, 'b7': 10, '7': 11
+}
+_SEMI_TO_DEGREE = {v: k for k, v in _DEGREE_TO_SEMI.items()}
+
+def _degree_labels_in_scale(intervals: list[int]) -> list[str]:
+    """Convert a scale's semitone intervals into degree labels in scale order."""
+    return [_SEMI_TO_DEGREE[i % 12] for i in intervals]
+
+def _spell_pc(pc: int, prefer: str) -> str:
+    """Spell a pitch class as a note name using a simple sharp/flat preference."""
+    pc %= 12
+    if prefer == 'flat':
+        return _FLAT_PC_TO_NOTE[pc]
+    return _SHARP_PC_TO_NOTE[pc]
+
+# Heptatonic scale blueprints for Degrees/Harmony (includes melodic/harmonic minor modes)
+DEGREES_SCALE_INTERVALS = {
+    # Basics
+    'major':           [0, 2, 4, 5, 7, 9, 11],
+    'natural_minor':   [0, 2, 3, 5, 7, 8, 10],
+
+    # Major modes (church modes)
+    'ionian':          [0, 2, 4, 5, 7, 9, 11],
+    'dorian':          [0, 2, 3, 5, 7, 9, 10],
+    'phrygian':        [0, 1, 3, 5, 7, 8, 10],
+    'lydian':          [0, 2, 4, 6, 7, 9, 11],
+    'mixolydian':      [0, 2, 4, 5, 7, 9, 10],
+    'aeolian':         [0, 2, 3, 5, 7, 8, 10],
+    'locrian':         [0, 1, 3, 5, 6, 8, 10],
+
+    # Harmonic minor + modes
+    'harmonic_minor':        [0, 2, 3, 5, 7, 8, 11],
+    'locrian_nat6':          [0, 1, 3, 5, 6, 9, 10],
+    'ionian_sharp5':         [0, 2, 4, 5, 8, 9, 11],
+    'dorian_sharp4':         [0, 2, 3, 6, 7, 9, 10],
+    'phrygian_dominant':     [0, 1, 4, 5, 7, 8, 10],
+    'lydian_sharp2':         [0, 3, 4, 6, 7, 9, 11],
+    'ultralocrian':          [0, 1, 3, 4, 6, 8, 9],
+
+    # Melodic minor (ascending) + modes
+    'melodic_minor':        [0, 2, 3, 5, 7, 9, 11],
+    'dorian_b2':            [0, 1, 3, 5, 7, 9, 10],
+    'lydian_augmented':     [0, 2, 4, 6, 8, 9, 11],
+    'lydian_dominant':      [0, 2, 4, 6, 7, 9, 10],
+    'mixolydian_b6':        [0, 2, 4, 5, 7, 8, 10],
+    'locrian_sharp2':       [0, 2, 3, 5, 6, 8, 10],
+    'altered':              [0, 1, 3, 4, 6, 8, 10],
+}
+
+DEGREES_ALLOWED_BY_DIFFICULTY = {
+    'easy': ['major', 'natural_minor'],
+    'medium': ['ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian'],
+    'hard': [
+        # medium + harmonic/melodic minor and their modes
+        'ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian',
+        'harmonic_minor', 'locrian_nat6', 'ionian_sharp5', 'dorian_sharp4', 'phrygian_dominant', 'lydian_sharp2', 'ultralocrian',
+        'melodic_minor', 'dorian_b2', 'lydian_augmented', 'lydian_dominant', 'mixolydian_b6', 'locrian_sharp2', 'altered'
+    ],
+    'competition': [
+        'major', 'natural_minor',
+        'ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian',
+        'harmonic_minor', 'locrian_nat6', 'ionian_sharp5', 'dorian_sharp4', 'phrygian_dominant', 'lydian_sharp2', 'ultralocrian',
+        'melodic_minor', 'dorian_b2', 'lydian_augmented', 'lydian_dominant', 'mixolydian_b6', 'locrian_sharp2', 'altered'
+    ]
+}
+
+_ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
+
+def _identify_seventh_chord(intervals_from_root: list[int]) -> str:
+    """Identify a basic 7th-chord quality from semitone intervals [0, x, y, z]."""
+    sig = tuple(intervals_from_root)
+    # Ensure root is 0 and we have 4 tones
+    if len(sig) != 4 or sig[0] != 0:
+        return '7'  # fallback
+    # Common seventh-chord qualities
+    if sig == (0, 4, 7, 11):
+        return 'Maj7'
+    if sig == (0, 4, 7, 10):
+        return '7'
+    if sig == (0, 3, 7, 10):
+        return 'min7'
+    if sig == (0, 3, 6, 10):
+        return 'halfdim7'
+    if sig == (0, 3, 6, 9):
+        return 'dim7'
+    if sig == (0, 3, 7, 11):
+        return 'minMaj7'
+    # fallback: triad-ish
+    if sig[:3] == (0, 4, 7):
+        return 'Maj'
+    if sig[:3] == (0, 3, 7):
+        return 'min'
+    if sig[:3] == (0, 3, 6):
+        return 'dim'
+    return '7'
+
+
+@app.route('/generate_degrees', methods=['GET'])
+def generate_degrees():
+    """Degrees mode: ask for a scale degree note (e.g., b2 of C major)."""
+    difficulty = request.args.get('difficulty', 'easy')
+    out_of_scale = request.args.get('out_of_scale', 'false').lower() == 'true'
+
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    scale_type = random.choice(allowed)
+    intervals = DEGREES_SCALE_INTERVALS[scale_type]
+
+    root = random.choice(note_names)
+    scale_notes = get_scale_notes(root, intervals)
+
+    # Pick degree label
+    in_scale_labels = _degree_labels_in_scale(intervals)
+    all_labels = list(_DEGREE_TO_SEMI.keys())
+
+    target_degree = random.choice(all_labels) if out_of_scale else random.choice(in_scale_labels)
+    semi = _DEGREE_TO_SEMI[target_degree]
+    pc = (SEMITONE_MAP[root] + semi) % 12
+
+    # If the target degree is in the scale, use the diatonic spelling from scale_notes
+    correct_note = None
+    if semi in intervals:
+        idx = intervals.index(semi)
+        correct_note = scale_notes[idx]
+    else:
+        # Otherwise, spell simply based on whether the degree is flat/sharp
+        if target_degree.startswith('b'):
+            correct_note = _spell_pc(pc, 'flat')
+        elif target_degree.startswith('#'):
+            correct_note = _spell_pc(pc, 'sharp')
+        else:
+            correct_note = _spell_pc(pc, _preferred_accidental_for_root(root))
+
+    return jsonify({
+        'root': root,
+        'scale_type': scale_type,
+        'target_degree': target_degree,
+        'correct_note': correct_note,
+        'scale_notes': scale_notes,
+        'scale_intervals': intervals
+    })
+
+
+@app.route('/generate_harmony', methods=['GET'])
+def generate_harmony():
+    """Harmony mode: ask for a diatonic 7th chord on a scale degree (e.g., II chord of A dorian)."""
+    difficulty = request.args.get('difficulty', 'easy')
+
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    scale_type = random.choice(allowed)
+    intervals = DEGREES_SCALE_INTERVALS[scale_type]
+
+    root = random.choice(note_names)
+    scale_notes = get_scale_notes(root, intervals)
+
+    degree_index = random.randrange(7)  # 0..6
+    degree_roman = _ROMANS[degree_index]
+
+    chord_root_note = scale_notes[degree_index]
+
+    # Build tertian 7th chord from scale degrees: 1,3,5,7 within the scale
+    chord_degree_idxs = [(degree_index + 0) % 7, (degree_index + 2) % 7, (degree_index + 4) % 7, (degree_index + 6) % 7]
+
+    # Compute semitone intervals from the chord root (0.. <12), keeping them ascending
+    chord_root_semi = intervals[degree_index]
+    chord_semitones = []
+    for di in chord_degree_idxs:
+        s = intervals[di] - chord_root_semi
+        if s < 0:
+            s += 12
+        chord_semitones.append(s)
+    chord_semitones_sorted = sorted(chord_semitones)
+
+    chord_quality = _identify_seventh_chord(chord_semitones_sorted)
+    chord_name = f"{chord_root_note}{chord_quality}"
+
+    return jsonify({
+        'root': root,
+        'scale_type': scale_type,
+        'degree': degree_roman,
+        'chord_root': chord_root_note,
+        'chord_quality': chord_quality,
+        'chord_name': chord_name,
+        'scale_notes': scale_notes,
+        'scale_intervals': intervals
+    })
+
+
+
 
 @app.route('/self_test_hard')
 def self_test_hard():
