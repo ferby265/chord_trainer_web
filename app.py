@@ -397,12 +397,13 @@ def generate_scale():
 # Degrees (scale-degree -> note) and Harmony (scale-degree -> chord) modes
 # -----------------------------
 
+
 # Simple chromatic spellings (used only when a requested degree is outside the scale)
 _SHARP_PC_TO_NOTE = {
-    0:'C', 1:'C#', 2:'D', 3:'D#', 4:'E', 5:'F', 6:'F#', 7:'G', 8:'G#', 9:'A', 10:'A#', 11:'B'
+    0: 'C', 1: 'C#', 2: 'D', 3: 'D#', 4: 'E', 5: 'F', 6: 'F#', 7: 'G', 8: 'G#', 9: 'A', 10: 'A#', 11: 'B'
 }
 _FLAT_PC_TO_NOTE = {
-    0:'C', 1:'Db', 2:'D', 3:'Eb', 4:'E', 5:'F', 6:'Gb', 7:'G', 8:'Ab', 9:'A', 10:'Bb', 11:'B'
+    0: 'C', 1: 'Db', 2: 'D', 3: 'Eb', 4: 'E', 5: 'F', 6: 'Gb', 7: 'G', 8: 'Ab', 9: 'A', 10: 'Bb', 11: 'B'
 }
 
 # Degree label -> semitone from root (within an octave)
@@ -412,9 +413,11 @@ _DEGREE_TO_SEMI = {
 }
 _SEMI_TO_DEGREE = {v: k for k, v in _DEGREE_TO_SEMI.items()}
 
+
 def _degree_labels_in_scale(intervals: list[int]) -> list[str]:
     """Convert a scale's semitone intervals into degree labels in scale order."""
     return [_SEMI_TO_DEGREE[i % 12] for i in intervals]
+
 
 def _spell_pc(pc: int, prefer: str) -> str:
     """Spell a pitch class as a note name using a simple sharp/flat preference."""
@@ -422,6 +425,7 @@ def _spell_pc(pc: int, prefer: str) -> str:
     if prefer == 'flat':
         return _FLAT_PC_TO_NOTE[pc]
     return _SHARP_PC_TO_NOTE[pc]
+
 
 # Heptatonic scale blueprints for Degrees/Harmony (includes melodic/harmonic minor modes)
 DEGREES_SCALE_INTERVALS = {
@@ -476,6 +480,7 @@ DEGREES_ALLOWED_BY_DIFFICULTY = {
 
 _ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 
+
 def _identify_seventh_chord(intervals_from_root: list[int]) -> str:
     """Identify a basic 7th-chord quality from semitone intervals [0, x, y, z]."""
     sig = tuple(intervals_from_root)
@@ -504,6 +509,183 @@ def _identify_seventh_chord(intervals_from_root: list[int]) -> str:
         return 'dim'
     return '7'
 
+# -----------------------------
+# Progression modes (Scale Guess / Borrowed Chord)
+# -----------------------------
+
+
+# 7th chord quality -> semitone recipe
+_SEVENTH_QUALITY_TO_INTERVALS = {
+    'Maj7':     [0, 4, 7, 11],
+    '7':        [0, 4, 7, 10],
+    'min7':     [0, 3, 7, 10],
+    'halfdim7': [0, 3, 6, 10],
+    'dim7':     [0, 3, 6, 9],
+    'minMaj7':  [0, 3, 7, 11],
+}
+
+
+def _chord_pcs(root_note: str, quality: str) -> set[int]:
+    """Pitch-class set for a 7th chord (quality must be one of the keys above)."""
+    root_pc = SEMITONE_MAP[root_note]
+    ivs = _SEVENTH_QUALITY_TO_INTERVALS.get(quality)
+    if not ivs:
+        # fallback: treat as dominant 7 if unknown
+        ivs = _SEVENTH_QUALITY_TO_INTERVALS['7']
+    return {(root_pc + i) % 12 for i in ivs}
+
+
+def _build_diatonic_sevenths(root: str, scale_type: str) -> list[dict]:
+    """
+    Return diatonic 7th chords for a heptatonic scale:
+      [{degree:'I', chord_name:'Cmaj7', chord_root:'C', chord_quality:'Maj7', pcs:set(...)}, ...]
+    """
+    intervals = DEGREES_SCALE_INTERVALS[scale_type]
+    scale_notes = get_scale_notes(root, intervals)
+
+    out = []
+    for degree_index in range(7):
+        degree_roman = _ROMANS[degree_index]
+        chord_root_note = scale_notes[degree_index]
+
+        # tertian 7th chord degrees: 1,3,5,7 within the scale
+        chord_degree_idxs = [
+            (degree_index + 0) % 7,
+            (degree_index + 2) % 7,
+            (degree_index + 4) % 7,
+            (degree_index + 6) % 7
+        ]
+
+        chord_root_semi = intervals[degree_index]
+        chord_semitones = []
+        for di in chord_degree_idxs:
+            s = intervals[di] - chord_root_semi
+            if s < 0:
+                s += 12
+            chord_semitones.append(s)
+
+        chord_semitones_sorted = sorted(chord_semitones)
+        quality = _identify_seventh_chord(chord_semitones_sorted)
+        name = f"{chord_root_note}{quality}"
+        pcs = _chord_pcs(chord_root_note, quality)
+
+        out.append({
+            "degree": degree_roman,
+            "chord_root": chord_root_note,
+            "chord_quality": quality,
+            "chord_name": name,
+            "pcs": pcs,
+        })
+    return out
+
+
+def _pick_subset(chords: list[dict], n_min=3, n_max=4) -> list[dict]:
+    n = random.randint(n_min, n_max)
+    return random.sample(chords, k=n)
+
+
+def _generate_borrowed_chord(target_root: str, target_scale_type: str) -> dict:
+    """
+    Generate a 'borrowed' chord by sampling a different scale type (same root),
+    and picking a chord that is NOT pitch-class-identical to any target diatonic chord.
+    """
+    target = _build_diatonic_sevenths(target_root, target_scale_type)
+    target_pcs_sets = [c["pcs"] for c in target]
+
+    # candidate scale pool: same difficulty pool as your degrees/harmony "hard" list, but you can tighten it
+    candidate_scales = list(DEGREES_SCALE_INTERVALS.keys())
+    random.shuffle(candidate_scales)
+
+    for scale_type in candidate_scales:
+        if scale_type == target_scale_type:
+            continue
+        cand = _build_diatonic_sevenths(target_root, scale_type)
+        random.shuffle(cand)
+        for c in cand:
+            if c["pcs"] not in target_pcs_sets:
+                return c
+
+    # ultra-safe fallback (should be rare)
+    # just return a diatonic chord but mark it (not ideal, but avoids crashing)
+    return random.choice(target)
+
+
+@app.route('/generate_progression_easy', methods=['GET'])
+def generate_progression_easy():
+    """
+    Easy: all chords diatonic -> user guesses scale.
+    Returns: { root, scale_type, chords:[...chord_name...], degrees:[...], scale_notes:[...]}
+    """
+    difficulty = request.args.get('difficulty', 'easy')
+
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(
+        difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    scale_type = random.choice(allowed)
+    root = random.choice(note_names)
+
+    diatonic = _build_diatonic_sevenths(root, scale_type)
+    subset = _pick_subset(diatonic, n_min=3, n_max=4)
+
+    intervals = DEGREES_SCALE_INTERVALS[scale_type]
+    scale_notes = get_scale_notes(root, intervals)
+
+    return jsonify({
+        "root": root,
+        "scale_type": scale_type,
+        "chords": [c["chord_name"] for c in subset],
+        "degrees": [c["degree"] for c in subset],
+        "scale_notes": scale_notes,
+        "scale_intervals": intervals
+    })
+
+
+@app.route('/generate_progression_medium', methods=['GET'])
+def generate_progression_medium():
+    """
+    Medium: exactly one chord is borrowed -> user picks which chord doesn't belong.
+    Returns: { root, scale_type, chords:[...], borrowed_index, borrowed_chord }
+    """
+    difficulty = request.args.get('difficulty', 'easy')
+
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(
+        difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    scale_type = random.choice(allowed)
+    root = random.choice(note_names)
+
+    diatonic = _build_diatonic_sevenths(root, scale_type)
+    subset = _pick_subset(diatonic, n_min=3, n_max=4)
+
+    borrowed = _generate_borrowed_chord(root, scale_type)
+
+    # swap one chord out
+    borrowed_index = random.randrange(len(subset))
+    subset[borrowed_index] = borrowed
+
+    intervals = DEGREES_SCALE_INTERVALS[scale_type]
+    scale_notes = get_scale_notes(root, intervals)
+
+    return jsonify({
+        "root": root,
+        "scale_type": scale_type,
+        "chords": [c["chord_name"] for c in subset],
+        "degrees": [c.get("degree", None) for c in subset],
+        "borrowed_index": borrowed_index,
+        "borrowed_chord": borrowed["chord_name"],
+        "scale_notes": scale_notes,
+        "scale_intervals": intervals
+    })
+
+
+@app.route('/generate_progression_hard', methods=['GET'])
+def generate_progression_hard():
+    """
+    Hard: same as medium, but the user must answer BOTH:
+      1) the scale (root + scale_type)
+      2) which chord is borrowed
+    Returns same payload as medium.
+    """
+    return generate_progression_medium()
+
 
 @app.route('/generate_degrees', methods=['GET'])
 def generate_degrees():
@@ -511,7 +693,8 @@ def generate_degrees():
     difficulty = request.args.get('difficulty', 'easy')
     out_of_scale = request.args.get('out_of_scale', 'false').lower() == 'true'
 
-    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(
+        difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
     scale_type = random.choice(allowed)
     intervals = DEGREES_SCALE_INTERVALS[scale_type]
 
@@ -522,7 +705,8 @@ def generate_degrees():
     in_scale_labels = _degree_labels_in_scale(intervals)
     all_labels = list(_DEGREE_TO_SEMI.keys())
 
-    target_degree = random.choice(all_labels) if out_of_scale else random.choice(in_scale_labels)
+    target_degree = random.choice(
+        all_labels) if out_of_scale else random.choice(in_scale_labels)
     semi = _DEGREE_TO_SEMI[target_degree]
     pc = (SEMITONE_MAP[root] + semi) % 12
 
@@ -555,7 +739,8 @@ def generate_harmony():
     """Harmony mode: ask for a diatonic 7th chord on a scale degree (e.g., II chord of A dorian)."""
     difficulty = request.args.get('difficulty', 'easy')
 
-    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
+    allowed = DEGREES_ALLOWED_BY_DIFFICULTY.get(
+        difficulty, DEGREES_ALLOWED_BY_DIFFICULTY['easy'])
     scale_type = random.choice(allowed)
     intervals = DEGREES_SCALE_INTERVALS[scale_type]
 
@@ -568,7 +753,8 @@ def generate_harmony():
     chord_root_note = scale_notes[degree_index]
 
     # Build tertian 7th chord from scale degrees: 1,3,5,7 within the scale
-    chord_degree_idxs = [(degree_index + 0) % 7, (degree_index + 2) % 7, (degree_index + 4) % 7, (degree_index + 6) % 7]
+    chord_degree_idxs = [(degree_index + 0) % 7, (degree_index + 2) %
+                         7, (degree_index + 4) % 7, (degree_index + 6) % 7]
 
     # Compute semitone intervals from the chord root (0.. <12), keeping them ascending
     chord_root_semi = intervals[degree_index]
@@ -593,8 +779,6 @@ def generate_harmony():
         'scale_notes': scale_notes,
         'scale_intervals': intervals
     })
-
-
 
 
 @app.route('/self_test_hard')

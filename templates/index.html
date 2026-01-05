@@ -19,6 +19,7 @@
         <button onclick="selectMode('scale')">Scales</button>
         <button onclick="selectMode('degrees')">Degrees</button>
         <button onclick="selectMode('harmony')">Harmony</button>
+        <button onclick="selectMode('progression')">Progressions</button>
     </div>
 
     <!-- App Screen (hidden on load) -->
@@ -92,6 +93,12 @@
         let harmonyChordQuality = null;   // e.g. "min7"
         let harmonyChordRoot = null;      // e.g. "B"
         let outOfScaleAllowed = false;
+        // Progression mode state
+        let progressionChords = [];
+        let progressionRoot = null;
+        let progressionScaleType = null;
+        let progressionBorrowedIndex = null;
+        let progressionBorrowedChord = null;
 
         // Helper: Note to pitch class conversion
         function noteToPitchClass(note) {
@@ -137,12 +144,14 @@
         // Generate chord function (fetches chord from server)
         function generateChord() {
             const difficulty = document.getElementById('difficulty').value;
+
             if (difficulty !== currentDifficulty) {
                 totalTimeSpent = 0;
                 answerCount = 0;
                 updateAverageTime();
                 currentDifficulty = difficulty;
             }
+
             fetch(`/generate_chord?difficulty=${difficulty}&shell_mode=${shellModeActive}`)
                 .then(response => response.json())
                 .then(data => {
@@ -150,11 +159,15 @@
                     chordType = data.chord_type;
                     correctNotes = data.correct_notes;
                     intervals = data.intervals;
+
                     if (currentMode === 'spell') {
-                        document.getElementById('chordDisplay').innerText = `Spell the notes in: ${root}${chordType}`;
+                        document.getElementById('chordDisplay').innerText =
+                            `Spell the notes in: ${formatChordJazz(root, chordType)}`;
                     } else if (currentMode === 'name') {
-                        document.getElementById('chordDisplay').innerText = `Name this chord: ${correctNotes.join(' ')}`;
+                        document.getElementById('chordDisplay').innerText =
+                            `Name this chord: ${correctNotes.join(' ')}`;
                     }
+
                     document.getElementById('feedback').innerText = "";
                     document.getElementById('userInput').value = "";
                     startTimer(difficulty);
@@ -162,10 +175,51 @@
                 })
                 .catch(error => {
                     console.error("Error fetching chord:", error);
-                    document.getElementById('feedback').innerText = "❌ Failed to get a new chord. Check console.";
+                    document.getElementById('feedback').innerText =
+                        "❌ Failed to get a new chord. Check console.";
                 });
         }
+        function generateProgression() {
+            const difficulty = document.getElementById('difficulty').value;
 
+            let endpoint = "/generate_progression_easy";
+            if (difficulty === "medium") endpoint = "/generate_progression_medium";
+            if (difficulty === "hard" || difficulty === "competition") endpoint = "/generate_progression_hard";
+
+            fetch(`${endpoint}?difficulty=${difficulty}`)
+                .then(r => r.json())
+                .then(data => {
+                    progressionRoot = data.root;
+                    progressionScaleType = data.scale_type;
+                    progressionChords = data.chords || [];
+
+                    progressionBorrowedIndex = (data.borrowed_index ?? null);
+                    progressionBorrowedChord = (data.borrowed_chord ?? null);
+
+                    const prettyScale = (progressionScaleType || "").replaceAll("_", " ");
+                    const chordsLine = progressionChords.map(prettyChordString).join("   ");
+
+                    if (difficulty === "easy") {
+                        document.getElementById('chordDisplay').innerText =
+                            `What scale fits these chords?\n${chordsLine}`;
+                    } else if (difficulty === "medium") {
+                        document.getElementById('chordDisplay').innerText =
+                            `In ${progressionRoot} ${prettyScale}, which chord doesn't belong?\n${chordsLine}`;
+                    } else {
+                        document.getElementById('chordDisplay').innerText =
+                            `Hard: name the scale AND the borrowed chord.\nChords:\n${chordsLine}\n\nFormat: "C ionian | Abmaj7"`;
+                    }
+
+                    document.getElementById('feedback').innerText = "";
+                    document.getElementById('userInput').value = "";
+                    startTimer(difficulty);
+                    startTime = Date.now();
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('feedback').innerText = "❌ Failed to get a progression question.";
+                });
+        }
         function startTimer(difficulty) {
             clearInterval(timer);
             timeLeft = difficulty === 'competition' ? 15 : 30;
@@ -239,12 +293,102 @@
                     return;
                 }
 
-                document.getElementById('feedback').innerHTML = `❌ Incorrect!<br><strong>Correct chord:</strong> ${harmonyChordName}`;
+                document.getElementById('feedback').innerHTML =
+                    `❌ Incorrect!<br><strong>Correct chord:</strong> ${prettyChordString(harmonyChordName)}`;
                 updateScore();
                 updateAverageTime();
                 return;
             }
+            // --- PROGRESSION MODE ---
+            if (currentMode === 'progression') {
+                if (!progressionChords.length) {
+                    document.getElementById('feedback').innerText = "❌ Generate a progression first!";
+                    return;
+                }
 
+                const difficulty = document.getElementById('difficulty').value;
+                const userAnswerRaw = document.getElementById('userInput').value.trim();
+                clearInterval(timer);
+
+                const endTime = Date.now();
+                const timeTaken = (endTime - startTime) / 1000;
+                totalTimeSpent += timeTaken;
+                answerCount++;
+                totalCount++;
+
+                const prettyScale = (progressionScaleType || "").replaceAll("_", " ");
+                const expectedScaleTokens = [
+                    `${progressionRoot}`.toLowerCase(),
+                    `${prettyScale}`.toLowerCase()
+                ];
+
+                const normalize = (s) => (s || "").toLowerCase().replaceAll(/\s+/g, " ").trim();
+
+                const isScaleMatch = (s) => {
+                    const x = normalize(s);
+                    // accept: "C major", "C ionian", "c natural minor", etc
+                    return x.includes(expectedScaleTokens[0]) && x.includes(expectedScaleTokens[1]);
+                };
+
+                if (difficulty === "easy") {
+                    if (isScaleMatch(userAnswerRaw)) {
+                        correctCount++;
+                        document.getElementById('feedback').innerText = "✅ Correct!";
+                        updateScore(); updateAverageTime();
+                        setTimeout(generateQuestion, 900);
+                        return;
+                    }
+                    document.getElementById('feedback').innerHTML =
+                        `❌ Incorrect!<br><strong>Answer:</strong> ${progressionRoot} ${prettyScale}`;
+                    updateScore(); updateAverageTime();
+                    return;
+                }
+
+                if (difficulty === "medium") {
+                    const x = normalize(userAnswerRaw);
+                    const borrowed = normalize(progressionBorrowedChord);
+
+                    // accept either the exact chord name or the index number (1..N)
+                    const asIndex = parseInt(x, 10);
+                    const indexOk = (!Number.isNaN(asIndex) && asIndex === (progressionBorrowedIndex + 1));
+                    const chordOk = x === borrowed;
+
+                    if (indexOk || chordOk) {
+                        correctCount++;
+                        document.getElementById('feedback').innerText = "✅ Correct!";
+                        updateScore(); updateAverageTime();
+                        setTimeout(generateQuestion, 900);
+                        return;
+                    }
+
+                    document.getElementById('feedback').innerHTML =
+                        `❌ Incorrect!<br><strong>Borrowed chord:</strong> ${progressionBorrowedChord}`;
+                    updateScore(); updateAverageTime();
+                    return;
+                }
+
+                // hard/competition: "C ionian | Abmaj7"
+                const parts = userAnswerRaw.split("|").map(p => p.trim());
+                const scalePart = parts[0] || "";
+                const chordPart = parts[1] || "";
+
+                const scaleOk = isScaleMatch(scalePart);
+                const chordOk = normalize(chordPart) === normalize(progressionBorrowedChord);
+
+                if (scaleOk && chordOk) {
+                    correctCount++;
+                    document.getElementById('feedback').innerText = "✅ Correct!";
+                    updateScore(); updateAverageTime();
+                    setTimeout(generateQuestion, 900);
+                    return;
+                }
+
+                document.getElementById('feedback').innerHTML =
+                    `❌ Incorrect!<br><strong>Answer:</strong> ${progressionRoot} ${prettyScale} | ${progressionBorrowedChord}`;
+
+                updateScore(); updateAverageTime();
+                return;
+            }
 
             // --- SCALE MODE FIRST ---
             if (currentMode === 'scale') {
@@ -315,6 +459,113 @@
             updateAverageTime();
         }
 
+        function jazzSuffixFromQuality(q) {
+            const exact = {
+                // triads
+                "Maj": "",
+                "min": "−",
+                "dim": "dim",
+                "aug": "+",
+                "sus2": "sus2",
+                "sus4": "sus4",
+
+                // 6ths
+                "6": "6",
+                "min6": "−6",
+                "6/9": "6/9",
+                "min6/9": "−6/9",
+
+                // 7ths
+                "Maj7": "△7",
+                "min7": "−7",
+                "7": "7",
+                "halfdim7": "ø7",
+                "min7b5": "ø7",
+                "dim7": "o7",
+                "minMaj7": "mM7",
+                "minMaj9": "mM9",
+
+                // extensions (plain)
+                "9": "9",
+                "Maj9": "△9",
+                "min9": "−9",
+                "11": "11",
+                "Maj11": "△11",
+                "min11": "−11",
+                "13": "13",
+                "Maj13": "△13",
+                "min13": "−13",
+
+                // common majors with #11
+                "Maj7#11": "△#11",
+                "Maj9#11": "△9#11",
+
+                // sus dominants
+                "7sus4": "7sus4",
+                "9sus4": "9sus4",
+                "13sus4": "13sus4",
+
+                // add chords
+                "add9": "add9",
+                "add11": "add11",
+                "add#11": "add#11",
+                "add13": "add13",
+                "add4": "add4",
+                "add6": "add6",
+            };
+
+            // exact hit (including empty string for Maj)
+            if (q in exact) return exact[q];
+
+            // helper: turn "b13#11" -> "(b13,#11)"
+            const parenAlts = (rest) => {
+                const tokens = (rest.match(/(bb|b|#)\d+/g) || []);
+                return tokens.length ? `(${tokens.join(",")})` : "";
+            };
+
+            // 1) Dominant alterations: 7b9#11 -> 7(b9,#11)
+            if (q.startsWith("7")) {
+                const rest = q.slice(1);
+                return "7" + parenAlts(rest);
+            }
+
+            // 2) Minor 7 alterations: min7b13 -> −7(b13)
+            if (q.startsWith("min7")) {
+                const rest = q.slice(4); // after "min7"
+                return "−7" + parenAlts(rest);
+            }
+
+            // 3) Major 7 alterations: Maj7#11 -> △(#11) (unless exact already handled)
+            if (q.startsWith("Maj7")) {
+                const rest = q.slice(4);
+                // common chart style is △#11 (no parens) but parens are fine too
+                const alt = parenAlts(rest);
+                return "△" + (alt ? alt : "");
+            }
+
+            // 4) Minor (triad) alterations: minb6 etc (rare) – fallback
+            if (q.startsWith("min")) {
+                const rest = q.slice(3);
+                return "−" + rest;
+            }
+
+            // fallback
+            return q;
+        }
+
+
+        function formatChordJazz(root, quality) {
+            return `${root}${jazzSuffixFromQuality(quality)}`;
+        }
+
+        function prettyChordString(chordName) {
+            // chordName like "Cmin7" or "DbMaj7#11" (root + quality glued)
+            const m = chordName.match(/^([A-G][#b]{0,2})(.*)$/);
+            if (!m) return chordName;
+            const root = m[1];
+            const q = m[2];
+            return formatChordJazz(root, q);
+        }
         function displayFeedback(isCorrect, isNameMode = false) {
             const numNotes = correctNotes.length;
             const noteRow = correctNotes.map(n => `<div class="chord-cell">${n}</div>`).join('');
@@ -359,7 +610,7 @@
             } else {
                 document.getElementById('feedback').innerHTML = `
       ❌ Incorrect!<br>
-      ${isNameMode ? `<strong>Correct Chord:</strong> ${root}${chordType}<br><br>` : ''}
+      ${isNameMode ? `<strong>Correct Chord:</strong> ${formatChordJazz(root, chordType)}<br><br>` : ''}
       <div class="chord-grid">
         <div class="chord-label">Correct Notes:</div>
         <div class="chord-row" style="grid-template-columns: repeat(${numNotes}, 1fr);">${noteRow}</div>
@@ -569,8 +820,14 @@
                 generateDegrees();
                 return;
             }
+
             if (currentMode === 'harmony') {
                 generateHarmonyChord();
+                return;
+            }
+
+            if (currentMode === 'progression') {
+                generateProgression();
                 return;
             }
 
@@ -579,14 +836,13 @@
                     .then(response => response.json())
                     .then(data => {
                         root = data.root;
-                        const scaleType = data.scale_type; // e.g. "dorian", "whole_tone"
+                        const scaleType = data.scale_type;
                         correctNotes = data.correct_notes;
                         intervals = data.intervals;
 
                         const pretty = scaleType.replaceAll('_', ' ');
                         document.getElementById('chordDisplay').innerText =
                             `Spell the notes in: ${root} ${pretty} scale`;
-
 
                         document.getElementById('feedback').innerText = "";
                         document.getElementById('userInput').value = "";
@@ -597,12 +853,14 @@
                         console.error(err);
                         document.getElementById('feedback').innerText = "❌ Failed to get a scale. Check console.";
                     });
+
                 return;
             }
 
             // chord modes (“spell” / “name”)
-            generateChord(); // continues to respect difficulty & shell mode
+            generateChord();
         }
+
     </script>
 </body>
 
